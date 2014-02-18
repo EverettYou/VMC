@@ -9,14 +9,15 @@ MODULE MODEL
 END MODULE MODEL
 ! ############### GRID ####################
 MODULE GRID
-	INTEGER, ALLOCATABLE :: XS(:,:)
-	REAL,    ALLOCATABLE :: KS(:,:)
+	INTEGER :: N ! number of unit cells
+	INTEGER, ALLOCATABLE :: XS(:,:) ! x grid (2*N,2)
+	REAL,    ALLOCATABLE :: KS(:,:) ! k grid (N,2)
 CONTAINS
 ! make grid
 SUBROUTINE MAKE_GRID()
 	USE CONST
 	USE MODEL
-	INTEGER :: N, I, I1, I2
+	INTEGER :: I, I1, I2
 	
 	N = L**2/2 ! number of unit cells
 	ALLOCATE(XS(2*N,2), KS(N,2)) ! allocate x and k grid
@@ -44,9 +45,44 @@ END SUBROUTINE MAKE_GRID
 END MODULE GRID
 ! ############# PHYSICS ###################
 MODULE PHYSICS
-	
+	COMPLEX, ALLOCATABLE :: SLATE(:,:) ! Slate matrix (2*N,N)
 CONTAINS
-
+! ---------- Slate det --------------
+! set Slate matrix
+SUBROUTINE SET_SLATE(M)
+! M - mass
+	USE CONST
+	USE GRID
+	REAL, INTENT(IN) :: M
+	! local variables
+	INTEGER :: IX, IK
+	
+	ALLOCATE(SLATE(2*N, N)) ! allocate Slate matrix
+	FORALL (IX = 1:2*N:2, IK = 1:N)
+		SLATE(IX:IX+1, IK) = UFUN(KS(IK,:),M)*EXP(ZI*MATMUL(XS(IX:IX+1,:),KS(IK,:)))
+	END FORALL
+END SUBROUTINE SET_SLATE
+! u function
+PURE FUNCTION UFUN(K, M) RESULT(U)
+! K - momentum vector, M - mass
+! U - state vector
+	USE CONST
+	REAL, INTENT(IN) :: K(2), M
+	COMPLEX :: U(2)
+	! local variables
+	REAL :: H(3)
+	
+	! set bare h vector
+	H(1) = SIN(K(1))
+	H(2) = 2.-COS(K(1))-COS(K(2))+M
+	H(3) = SIN(K(2))
+	! normalize h vector (must insure fully gap)
+	H = H/SQRT(SUM(H**2))
+	! construct state vector
+	U(1) = CMPLX(1.-H(3))
+	U(2) = -H(1)+ZI*H(2)
+	U = U/SQRT(SUM(CONJG(U)*U))
+END FUNCTION UFUN
 ! end of module PHYSICS
 END MODULE PHYSICS
 ! ############### TASK ####################
@@ -73,6 +109,14 @@ SUBROUTINE TEST_GRID()
 	CALL EXPORT('XS',XS)
 	CALL EXPORT('KS',KS)
 END SUBROUTINE TEST_GRID
+! test Slate
+SUBROUTINE TEST_SLATE()
+	USE PHYSICS
+	USE MATHIO
+	
+	CALL SET_SLATE(0.1)
+	CALL EXPORT('SLATE',SLATE)
+END SUBROUTINE TEST_SLATE
 ! end of module task
 END MODULE TASK
 ! ############## PROGRAM ##################
@@ -82,5 +126,6 @@ PROGRAM MAIN
 	CALL INIT()
 	
 !	CALL TEST()
-	CALL TEST_GRID()
+!	CALL TEST_GRID()
+	CALL TEST_SLATE()
 END PROGRAM MAIN
