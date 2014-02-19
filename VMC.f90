@@ -9,8 +9,8 @@ MODULE MODEL
 END MODULE MODEL
 ! ############### GRID ####################
 MODULE GRID
-	INTEGER :: N ! number of unit cells
-	INTEGER, ALLOCATABLE :: XS(:,:) ! x grid (2*N,2)
+	INTEGER :: N ! number of sites
+	INTEGER, ALLOCATABLE :: XS(:,:) ! x grid (N,2)
 	REAL,    ALLOCATABLE :: KS(:,:) ! k grid (N,2)
 CONTAINS
 ! make grid
@@ -19,8 +19,8 @@ SUBROUTINE MAKE_GRID()
 	USE MODEL
 	INTEGER :: I, I1, I2
 	
-	N = L**2/2 ! number of unit cells
-	ALLOCATE(XS(2*N,2), KS(N,2)) ! allocate x and k grid
+	N = L**2 ! number of sites
+	ALLOCATE(XS(N,2), KS(N,2)) ! allocate x and k grid
 	! filling in x grid (x1 runs faster)
 	I = 0
 	DO I2 = 0, L-1
@@ -33,7 +33,7 @@ SUBROUTINE MAKE_GRID()
 	! filling in k grid (k1 runs faster)
 	I = 0
 	DO I2 = 0, L-1
-	DO I1 = 0, L/2-1
+	DO I1 = 0, L-1
 		I = I + 1 ! I inc
 		KS(I,1) = I1
 		KS(I,2) = I2
@@ -45,11 +45,11 @@ END SUBROUTINE MAKE_GRID
 END MODULE GRID
 ! ############# PHYSICS ###################
 MODULE PHYSICS
-	COMPLEX, ALLOCATABLE :: SLATE(:,:) ! Slate matrix (2*N,N)
+	COMPLEX, ALLOCATABLE :: SLATER(:,:) ! Slater matrix (2*N,N)
 CONTAINS
-! ---------- Slate det --------------
-! set Slate matrix
-SUBROUTINE SET_SLATE(M)
+! ---------- Slater det --------------
+! set Slater matrix
+SUBROUTINE SET_SLATER(M)
 ! M - mass
 	USE CONST
 	USE GRID
@@ -57,11 +57,11 @@ SUBROUTINE SET_SLATE(M)
 	! local variables
 	INTEGER :: IX, IK
 	
-	ALLOCATE(SLATE(2*N, N)) ! allocate Slate matrix
-	FORALL (IX = 1:2*N:2, IK = 1:N)
-		SLATE(IX:IX+1, IK) = UFUN(KS(IK,:),M)*EXP(ZI*MATMUL(XS(IX:IX+1,:),KS(IK,:)))
+	ALLOCATE(SLATER(2*N, N)) ! allocate Slater matrix
+	FORALL (IX = 1:N, IK = 1:N)
+		SLATER(2*IX-1:2*IX, IK) = UFUN(KS(IK,:),M)*EXP(ZI*SUM(XS(IX,:)*KS(IK,:)))
 	END FORALL
-END SUBROUTINE SET_SLATE
+END SUBROUTINE SET_SLATER
 ! u function
 PURE FUNCTION UFUN(K, M) RESULT(U)
 ! K - momentum vector, M - mass
@@ -74,15 +74,21 @@ PURE FUNCTION UFUN(K, M) RESULT(U)
 	
 	! set bare h vector
 	H(1) = SIN(K(1))
-	H(2) = 2.-COS(K(1))-COS(K(2))+M
+	H(2) = 2.-COS(K(1))-COS(K(2))-M
 	H(3) = SIN(K(2))
 	! normalize h vector (must insure fully gap)
 	H = H/SQRT(SUM(H**2))
 	! construct state vector
-	U(1) = CMPLX(1.-H(3))
-	U(2) = -H(1)+ZI*H(2)
-	U = U/SQRT(SUM(CONJG(U)*U))
+	IF (H(3) == 1.) THEN
+		U(1) = Z0
+		U(2) = Z1
+	ELSE
+		U(1) = CMPLX(1.-H(3))
+		U(2) = -H(1)+ZI*H(2)
+		U = U/SQRT(SUM(CONJG(U)*U))
+	END IF
 END FUNCTION UFUN
+! make
 ! end of module PHYSICS
 END MODULE PHYSICS
 ! ############### TASK ####################
@@ -99,7 +105,10 @@ END SUBROUTINE INIT
 ! ----------- tests -----------------
 ! test
 SUBROUTINE TEST()
+	USE PHYSICS
+	USE MATHIO
 	
+	CALL SET_SLATER(1.)
 END SUBROUTINE TEST
 ! test grid
 SUBROUTINE TEST_GRID()
@@ -109,14 +118,14 @@ SUBROUTINE TEST_GRID()
 	CALL EXPORT('XS',XS)
 	CALL EXPORT('KS',KS)
 END SUBROUTINE TEST_GRID
-! test Slate
-SUBROUTINE TEST_SLATE()
+! test Slater
+SUBROUTINE TEST_SLATER()
 	USE PHYSICS
 	USE MATHIO
 	
-	CALL SET_SLATE(0.1)
-	CALL EXPORT('SLATE',SLATE)
-END SUBROUTINE TEST_SLATE
+	CALL SET_SLATER(1.)
+	CALL EXPORT('SLATER',SLATER)
+END SUBROUTINE TEST_SLATER
 ! end of module task
 END MODULE TASK
 ! ############## PROGRAM ##################
@@ -126,6 +135,6 @@ PROGRAM MAIN
 	CALL INIT()
 	
 !	CALL TEST()
-!	CALL TEST_GRID()
-	CALL TEST_SLATE()
+	CALL TEST_GRID()
+	CALL TEST_SLATER()
 END PROGRAM MAIN
